@@ -1,0 +1,255 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="space-y-6 fade-in">
+
+    <!-- Back + status bar -->
+    <div class="flex items-center justify-between">
+        <a href="/" class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-accent transition">
+            <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
+            </svg>
+            Back
+        </a>
+        <div class="flex items-center gap-2">
+            <span id="status-badge" class="text-xs px-3 py-1.5 rounded-lg font-medium
+                {% if task.status == 'running' %}bg-green-50 text-green-600
+                {% elif task.status == 'queued' %}bg-amber-50 text-amber-600
+                {% elif task.status == 'paused' %}bg-yellow-50 text-yellow-600
+                {% elif task.status == 'review' %}bg-indigo-50 text-indigo-600
+                {% elif task.status == 'completed' %}bg-gray-100 text-gray-500
+                {% elif task.status == 'cancelled' %}bg-orange-50 text-orange-600
+                {% elif task.status == 'failed' %}bg-red-50 text-red-600
+                {% endif %}">
+                {% if task.status == 'review' %}needs review{% elif task.status == 'paused' %}paused{% if task.paused_until %} until {{ task.paused_until }}{% endif %}{% else %}{{ task.status }}{% endif %}
+            </span>
+            {% if task.status == 'running' %}
+            <button onclick="stopTask({{ task.id }})" id="stop-btn"
+                class="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-100 transition">
+                Stop
+            </button>
+            {% elif task.status == 'review' %}
+            <button onclick="markComplete({{ task.id }})"
+                class="rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-medium text-green-600 hover:bg-green-100 transition">
+                Mark Complete
+            </button>
+            {% elif task.status != 'running' %}
+            <button onclick="runTask({{ task.id }})"
+                class="rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-500 hover:text-green-600 hover:border-green-300 transition">
+                {% if task.status in ('completed', 'failed', 'cancelled', 'review') %}Re-run{% elif task.status == 'paused' %}Resume Now{% else %}Run Now{% endif %}
+            </button>
+            {% endif %}
+            <span id="live-indicator" class="{% if task.status == 'running' %}flex{% else %}hidden{% endif %} items-center gap-1.5 text-xs text-green-500">
+                <span class="h-1.5 w-1.5 rounded-full bg-green-400 pulse-dot"></span>
+                Live
+            </span>
+        </div>
+    </div>
+
+    <!-- Conversation -->
+    <div class="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
+
+        <!-- Messages -->
+        <div id="messages-container" class="px-6 py-5 space-y-4 max-h-[700px] overflow-y-auto">
+
+            {% if messages %}
+                {% for msg in messages %}
+                <div class="{% if msg.role == 'user' %}flex justify-end{% endif %}">
+                    <div class="{% if msg.role == 'user' %}bg-accent/5 border-accent/10{% else %}bg-gray-50 border-gray-100{% endif %} rounded-xl border p-4 max-w-[90%]">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-medium {% if msg.role == 'user' %}text-accent{% else %}text-gray-500{% endif %}">
+                                {% if msg.role == 'user' %}You{% else %}Claude{% endif %}
+                            </span>
+                            <span class="text-xs text-gray-300">{{ msg.created_at }}</span>
+                        </div>
+                        {% if msg.role == 'user' %}
+                        <pre class="text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed">{{ msg.content }}</pre>
+                        {% else %}
+                        <div class="prose text-gray-800 markdown-content">{{ msg.content }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+
+                {# Show claude_output if the last stored message is from the user (response not in messages table) #}
+                {% if messages[-1].role == 'user' and task.claude_output %}
+                <div>
+                    <div class="bg-gray-50 border border-gray-100 rounded-xl p-4 max-w-[90%]">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-medium text-gray-500">Claude</span>
+                        </div>
+                        <div class="prose text-gray-800 markdown-content">{{ task.claude_output }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            {% else %}
+                <!-- No messages yet — show the task prompt as first message -->
+                <div class="flex justify-end">
+                    <div class="bg-accent/5 border-accent/10 rounded-xl border p-4 max-w-[90%]">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-medium text-accent">You</span>
+                            <span class="text-xs text-gray-300">{{ task.created_at }}</span>
+                        </div>
+                        <pre class="text-sm text-gray-800 whitespace-pre-wrap font-mono leading-relaxed">{{ task.title }}{% if task.description %}
+
+{{ task.description }}{% endif %}</pre>
+                    </div>
+                </div>
+
+                {% if task.claude_output %}
+                <div>
+                    <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                        <div class="flex items-center gap-2 mb-2">
+                            <span class="text-xs font-medium text-gray-500">Claude</span>
+                        </div>
+                        <div class="prose text-gray-800 markdown-content">{{ task.claude_output }}</div>
+                    </div>
+                </div>
+                {% endif %}
+            {% endif %}
+
+            {% if task.status == 'running' %}
+            <div id="live-output-wrapper">
+                <div class="bg-gray-50 border border-gray-100 rounded-xl p-4">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-xs font-medium text-gray-500">Claude</span>
+                    </div>
+                    <div id="output-text" class="prose text-gray-800">Working...</div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Follow-up input -->
+        {% if task.status != 'running' %}
+        <div class="border-t border-gray-100 px-6 py-4">
+            <form id="followup-form" class="space-y-3">
+                <textarea id="followup-input" rows="3" placeholder="Continue the conversation..."
+                    class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-accent/20 focus:border-accent transition font-mono"></textarea>
+                <div class="flex justify-end gap-2">
+                    <button type="button" onclick="sendFollowUp(false)"
+                        class="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:border-accent hover:text-accent transition">
+                        Schedule for Later
+                    </button>
+                    <button type="button" onclick="sendFollowUp(true)"
+                        class="rounded-xl bg-accent px-4 py-2 text-sm font-medium text-white hover:bg-accent-light transition shadow-sm">
+                        Send Now
+                    </button>
+                </div>
+            </form>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Meta info -->
+    <div class="flex items-center gap-6 text-xs text-gray-400 px-1">
+        <span>Created: {{ task.created_at }}</span>
+        {% if task.started_at %}<span>Started: {{ task.started_at }}</span>{% endif %}
+        {% if task.completed_at %}<span>Completed: {{ task.completed_at }}</span>{% endif %}
+        {% if task.working_directory %}<span>Dir: {{ task.working_directory }}</span>{% endif %}
+        {% if task.session_id %}<span>Session: {{ task.session_id[:8] }}...</span>{% endif %}
+    </div>
+
+    <!-- Activity Log -->
+    {% if logs %}
+    <details class="rounded-2xl border border-gray-100 bg-white shadow-sm">
+        <summary class="px-6 py-4 text-sm font-medium text-gray-500 uppercase tracking-wide cursor-pointer hover:text-gray-700 transition">
+            Activity Log ({{ logs|length }})
+        </summary>
+        <div class="px-6 pb-4 space-y-2">
+            {% for log in logs %}
+            <div class="flex items-start gap-3 text-sm">
+                <span class="text-xs text-gray-400 flex-shrink-0 mt-0.5 w-36">{{ log.created_at }}</span>
+                {% if log.log_type == 'error' %}
+                <span class="text-red-500">{{ log.message }}</span>
+                {% else %}
+                <span class="text-gray-600">{{ log.message }}</span>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </details>
+    {% endif %}
+
+</div>
+
+<script>
+    const TASK_ID = {{ task.id }};
+    let currentStatus = '{{ task.status }}';
+    let pollInterval = null;
+
+    // Render all markdown content
+    document.querySelectorAll('.markdown-content').forEach(el => {
+        el.innerHTML = marked.parse(el.textContent);
+    });
+
+    async function pollOutput() {
+        try {
+            const res = await fetch(`/api/tasks/${TASK_ID}/output`);
+            const data = await res.json();
+
+            const el = document.getElementById('output-text');
+            if (el && data.output) {
+                el.innerHTML = marked.parse(data.output);
+                const container = document.getElementById('messages-container');
+                container.scrollTop = container.scrollHeight;
+            }
+
+            if (data.status !== currentStatus) {
+                currentStatus = data.status;
+                if (data.status !== 'running') {
+                    stopPolling();
+                    setTimeout(() => location.reload(), 1000);
+                }
+            }
+        } catch(e) {}
+    }
+
+    function startPolling() {
+        if (!pollInterval) {
+            pollInterval = setInterval(pollOutput, 2000);
+            pollOutput();
+        }
+    }
+
+    function stopPolling() {
+        if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+    }
+
+    if (currentStatus === 'running') startPolling();
+
+    async function runTask(id) {
+        await fetch(`/api/tasks/${id}/run`, { method: 'POST' });
+        location.reload();
+    }
+
+    async function stopTask(id) {
+        document.getElementById('stop-btn').textContent = 'Stopping...';
+        await fetch(`/api/tasks/${id}/stop`, { method: 'POST' });
+        setTimeout(() => location.reload(), 1000);
+    }
+
+    async function markComplete(id) {
+        await fetch(`/api/tasks/${id}/complete`, { method: 'POST' });
+        location.reload();
+    }
+
+    async function sendFollowUp(runNow) {
+        const input = document.getElementById('followup-input');
+        const message = input.value.trim();
+        if (!message) return;
+        await fetch(`/api/tasks/${TASK_ID}/follow-up`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ message, run_now: runNow })
+        });
+        location.reload();
+    }
+
+    document.getElementById('followup-input')?.addEventListener('keydown', function(e) {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') sendFollowUp(true);
+    });
+
+    const container = document.getElementById('messages-container');
+    if (container) container.scrollTop = container.scrollHeight;
+</script>
+{% endblock %}

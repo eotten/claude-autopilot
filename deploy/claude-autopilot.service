@@ -1,0 +1,23 @@
+[Unit]
+Description=Claude Autopilot
+After=network.target
+
+[Service]
+Type=simple
+User=autopilot
+Group=autopilot
+WorkingDirectory=/opt/claude-autopilot
+Environment=AUTOPILOT_DB=/var/lib/claude-autopilot/autopilot.db
+Environment=AUTOPILOT_USER=admin
+Environment=AUTOPILOT_PASS=CHANGE_ME
+ExecStart=/opt/claude-autopilot/venv/bin/gunicorn \
+    --bind 127.0.0.1:5055 \
+    --workers 1 \
+    --threads 4 \
+    --timeout 300 \
+    app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
