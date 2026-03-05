@@ -31,7 +31,18 @@ If you're hosting behind a reverse proxy on a subpath (e.g., `example.com/autopi
 URL_PREFIX=/autopilot python3 app.py
 ```
 
-Or in your systemd service: `Environment=URL_PREFIX=/autopilot`
+For a systemd service, add it to your service file (`/etc/systemd/system/claude-autopilot.service`):
+
+```ini
+Environment=URL_PREFIX=/autopilot
+```
+
+Then reload and restart:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart claude-autopilot
+```
 
 When `URL_PREFIX` is set, **all routes are mounted under that prefix**. This means:
 
