@@ -4,8 +4,10 @@ import json
 import os
 import re
 import signal
+import time
 from datetime import datetime, timedelta
 from database import get_db
+from usage import get_usage, is_under_usage_limit
 
 _scheduler_thread = None
 _stop_event = threading.Event()
@@ -71,6 +73,8 @@ _RATE_LIMIT_PATTERNS = [
     r"try again",
     r"429",
     r"overloaded",
+    r"hit your limit",
+    r"resets \d+\s*[ap]m",
 ]
 
 # Default pause: 30 minutes. Can be overridden by parsing the error.
@@ -171,6 +175,9 @@ def _process_stream(task_id, proc, append=False):
 
     collected_text = []
     session_id = None
+    rate_limited = False
+    last_usage_check = 0
+    _USAGE_CHECK_INTERVAL = 60  # check usage API every 60 seconds during streaming
 
     for line in proc.stdout:
         line = line.strip()
@@ -183,6 +190,21 @@ def _process_stream(task_id, proc, append=False):
             continue
 
         event_type = event.get("type")
+
+        # Periodic usage check — kill process if over threshold
+        now = time.time()
+        if now - last_usage_check > _USAGE_CHECK_INTERVAL:
+            last_usage_check = now
+            if get_setting("usage_limit_enabled", "false") == "true":
+                threshold = float(get_setting("usage_limit_threshold", "50"))
+                if not is_under_usage_limit(threshold):
+                    _add_log(task_id, f"Usage over {threshold}% — stopping task", "error")
+                    rate_limited = True
+                    try:
+                        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    except (ProcessLookupError, PermissionError):
+                        proc.kill()
+                    break
 
         # Capture session_id from init event
         if event_type == "system" and event.get("subtype") == "init":
@@ -234,7 +256,7 @@ def _process_stream(task_id, proc, append=False):
             tool_name = event.get("tool", event.get("name", "unknown"))
             _add_log(task_id, f"Using tool: {tool_name}")
 
-    return collected_text, session_id
+    return collected_text, session_id, rate_limited
 
 
 def run_task(task_id, follow_up_message=None):
@@ -297,7 +319,7 @@ def run_task(task_id, follow_up_message=None):
 
             _running_processes[task_id]["process"] = proc
 
-            collected_text, session_id = _process_stream(task_id, proc, append=is_resume)
+            collected_text, session_id, usage_limited = _process_stream(task_id, proc, append=is_resume)
 
             # Store assistant response as message
             if collected_text:
@@ -314,9 +336,15 @@ def run_task(task_id, follow_up_message=None):
                 conn.close()
                 return
 
-            # Check for rate limiting in stderr or collected output
+            # Killed mid-stream due to usage limit
+            if usage_limited:
+                conn.close()
+                _pause_for_rate_limit(task_id, "Usage limit exceeded", is_resume=True, follow_up_message="Continue where you left off.")
+                return
+
+            # Check for rate limiting in stderr or collected output (regardless of exit code)
             all_output = (stderr or "") + " " + " ".join(collected_text)
-            if proc.returncode != 0 and _is_rate_limited(all_output):
+            if _is_rate_limited(all_output):
                 conn.close()
                 _pause_for_rate_limit(task_id, all_output, is_resume=is_resume, follow_up_message=follow_up_message)
                 return
@@ -362,20 +390,25 @@ def run_task(task_id, follow_up_message=None):
 def stop_task(task_id):
     """Stop a running task by killing the Claude CLI process."""
     entry = _running_processes.get(task_id)
-    if not entry:
+
+    if entry:
+        proc = entry.get("process")
+        if proc and proc.poll() is None:
+            try:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            except (ProcessLookupError, PermissionError):
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
+
+    # Always update DB if task is marked as running (handles orphaned tasks after restart)
+    conn = get_db()
+    task = conn.execute("SELECT status FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    if not task or task["status"] not in ("running", "queued", "paused"):
+        conn.close()
         return False
 
-    proc = entry.get("process")
-    if proc and proc.poll() is None:
-        try:
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
-        except (ProcessLookupError, PermissionError):
-            try:
-                proc.kill()
-            except Exception:
-                pass
-
-    conn = get_db()
     conn.execute(
         "UPDATE tasks SET status = 'cancelled', completed_at = datetime('now') WHERE id = ?",
         (task_id,),
@@ -383,6 +416,7 @@ def stop_task(task_id):
     conn.commit()
     conn.close()
 
+    _running_processes.pop(task_id, None)
     _add_log(task_id, "Task stopped by user")
     return True
 
@@ -394,6 +428,12 @@ def process_queue():
 
     if running_count >= max_concurrent:
         return
+
+    # Check usage limit before starting new tasks
+    if get_setting("usage_limit_enabled", "false") == "true":
+        threshold = float(get_setting("usage_limit_threshold", "50"))
+        if not is_under_usage_limit(threshold):
+            return
 
     # Unpause tasks whose pause window has expired — move them back to queued
     conn = get_db()

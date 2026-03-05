@@ -88,6 +88,8 @@ def init_db():
         "schedule_window_start": "23:00",
         "schedule_window_end": "07:00",
         "schedule_buffer_hours": "2.5",
+        "usage_limit_enabled": "false",
+        "usage_limit_threshold": "50",
     }
     for key, value in defaults.items():
         conn.execute(

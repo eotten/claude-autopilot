@@ -4,6 +4,7 @@ from functools import wraps
 from flask import Flask, Blueprint, request, jsonify, render_template, redirect, url_for, Response
 from database import get_db, init_db
 from scheduler import start_scheduler, run_task, stop_task, process_queue, _running_processes, is_within_schedule_window
+from usage import get_usage
 
 app = Flask(__name__)
 
@@ -392,12 +393,14 @@ def queue_status():
         paused_until = row[0] if row else None
     conn.close()
     in_window = is_within_schedule_window()
+    usage = get_usage()
     return jsonify({
         "running_tasks": list(_running_processes.keys()),
         "running_count": len(_running_processes),
         "paused_count": paused_count,
         "paused_until": paused_until,
         "in_schedule_window": in_window,
+        "usage": usage,
     })
 
 
