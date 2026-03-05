@@ -3,7 +3,7 @@ import secrets
 from functools import wraps
 from flask import Flask, request, jsonify, render_template, redirect, url_for, Response
 from database import get_db, init_db
-from scheduler import start_scheduler, run_task, stop_task, process_queue, _running_processes
+from scheduler import start_scheduler, run_task, stop_task, process_queue, _running_processes, is_within_schedule_window
 
 app = Flask(__name__)
 
@@ -393,11 +393,13 @@ def queue_status():
         row = conn.execute("SELECT MAX(paused_until) FROM tasks WHERE status = 'paused'").fetchone()
         paused_until = row[0] if row else None
     conn.close()
+    in_window = is_within_schedule_window()
     return jsonify({
         "running_tasks": list(_running_processes.keys()),
         "running_count": len(_running_processes),
         "paused_count": paused_count,
         "paused_until": paused_until,
+        "in_schedule_window": in_window,
     })
 
 

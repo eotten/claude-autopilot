@@ -20,6 +20,48 @@ def get_setting(key, default=None):
     return row["value"] if row else default
 
 
+def is_within_schedule_window():
+    """Check if current local time is within the configured schedule window.
+
+    Accounts for buffer_hours before window_end so rate limits can recover.
+    Returns True if no window is configured (empty start/end).
+    """
+    if get_setting("schedule_window_enabled", "false") != "true":
+        return True  # Window feature disabled, always allow
+
+    start_str = get_setting("schedule_window_start", "")
+    end_str = get_setting("schedule_window_end", "")
+
+    if not start_str or not end_str:
+        return True  # No window configured, always allow
+
+    try:
+        now = datetime.now()
+        start_h, start_m = map(int, start_str.split(":"))
+        end_h, end_m = map(int, end_str.split(":"))
+        buffer_hours = float(get_setting("schedule_buffer_hours", "2.5"))
+
+        start_minutes = start_h * 60 + start_m
+        end_minutes = end_h * 60 + end_m
+
+        # Subtract buffer from end time
+        effective_end_minutes = end_minutes - int(buffer_hours * 60)
+        if effective_end_minutes < 0:
+            effective_end_minutes += 24 * 60
+
+        now_minutes = now.hour * 60 + now.minute
+
+        # Handle midnight wraparound (e.g., 23:00 to 04:30)
+        if start_minutes <= effective_end_minutes:
+            # Same-day window (e.g., 09:00 to 17:00)
+            return start_minutes <= now_minutes < effective_end_minutes
+        else:
+            # Overnight window (e.g., 23:00 to 04:30)
+            return now_minutes >= start_minutes or now_minutes < effective_end_minutes
+    except (ValueError, TypeError):
+        return True  # If settings are malformed, don't block
+
+
 _RATE_LIMIT_PATTERNS = [
     r"rate.?limit",
     r"too many requests",
@@ -379,7 +421,7 @@ def scheduler_loop():
     while not _stop_event.is_set():
         try:
             enabled = get_setting("schedule_enabled", "false")
-            if enabled == "true":
+            if enabled == "true" and is_within_schedule_window():
                 process_queue()
         except Exception as e:
             print(f"Scheduler error: {e}")

@@ -84,6 +84,10 @@ def init_db():
         "max_concurrent_tasks": "1",
         "claude_path": "claude",
         "default_working_directory": os.environ.get("AUTOPILOT_WORKDIR", os.getcwd()),
+        "schedule_window_enabled": "false",
+        "schedule_window_start": "23:00",
+        "schedule_window_end": "07:00",
+        "schedule_buffer_hours": "2.5",
     }
     for key, value in defaults.items():
         conn.execute(
