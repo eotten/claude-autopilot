@@ -23,15 +23,35 @@ python3 app.py
 
 Open [http://localhost:5055](http://localhost:5055).
 
-### Hosting on a subpath
+### URL Prefix (subpath hosting)
 
-If you're hosting behind a reverse proxy on a subpath (e.g., `/autopilot`), set the `URL_PREFIX` env var:
+If you're hosting behind a reverse proxy on a subpath (e.g., `example.com/autopilot` instead of `example.com/`), set the `URL_PREFIX` env var:
 
 ```bash
 URL_PREFIX=/autopilot python3 app.py
 ```
 
 Or in your systemd service: `Environment=URL_PREFIX=/autopilot`
+
+When `URL_PREFIX` is set, **all routes are mounted under that prefix**. This means:
+
+- Dashboard: `example.com/autopilot/`
+- API: `example.com/autopilot/api/tasks`
+- Task detail: `example.com/autopilot/task/1`
+
+Your nginx `location` block must match the prefix and proxy to the app with the prefix included:
+
+```nginx
+location /autopilot {
+    proxy_pass http://127.0.0.1:5055;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+}
+```
+
+If `URL_PREFIX` is not set (or empty), all routes are served from `/` as normal.
+
+**Common mistake:** If you set `URL_PREFIX=/autopilot` but make API calls to `/api/tasks` (without the prefix), you'll get a 404. Always include the prefix in your API URLs.
 
 ## Schedule Window
 
