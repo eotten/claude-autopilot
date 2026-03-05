@@ -180,7 +180,8 @@ def run_task_now(task_id):
     conn.commit()
     conn.close()
 
-    run_task(task_id)
+    follow_up = task["pending_follow_up"]
+    run_task(task_id, follow_up_message=follow_up if follow_up else None)
     return jsonify({"ok": True, "status": "running"})
 
 
