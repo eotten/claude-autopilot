@@ -33,11 +33,27 @@ By default, autopilot only processes tasks between **11 PM and 4:30 AM** (config
 | End | 07:00 | When you want full rate limit availability |
 | Buffer | 2.5h | Hours before End to stop (for rate limit recovery) |
 
-Clear the start/end times to disable the window and run 24/7.
+The schedule window is optional — toggle it on in Settings when you want it.
 
 ## Server Deployment
 
 See [ubuntu-setup.md](ubuntu-setup.md) for full Ubuntu/DigitalOcean deployment with systemd, nginx, and SSL.
+
+```bash
+git clone https://github.com/eotten/claude-autopilot.git /opt/claude-autopilot
+```
+
+## Updating
+
+Pull the latest code and restart the service. Your settings and tasks are stored in a separate SQLite database and are not affected by code updates.
+
+```bash
+cd /opt/claude-autopilot
+git pull origin main
+sudo systemctl restart claude-autopilot
+```
+
+New settings are added automatically on restart with sensible defaults — existing settings and task history are preserved.
 
 ## API
 
