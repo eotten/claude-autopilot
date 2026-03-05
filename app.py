@@ -10,7 +10,9 @@ app = Flask(__name__)
 # Always init DB at import time so the reloader child process has tables
 init_db()
 
-# URL prefix — set URL_PREFIX env var when hosting on a subpath (e.g., /autopilot)
+# BASE_URL — the public-facing path prefix for links/assets (e.g., /autopilot)
+# URL_PREFIX — mounts all Flask routes under a subpath (only needed if nginx passes the prefix through)
+BASE_URL = os.environ.get("BASE_URL", os.environ.get("URL_PREFIX", "")).rstrip("/")
 URL_PREFIX = os.environ.get("URL_PREFIX", "").rstrip("/")
 
 # Basic auth — set AUTOPILOT_USER and AUTOPILOT_PASS env vars to enable
@@ -39,7 +41,7 @@ def _auth_guard():
 @bp.context_processor
 def inject_base_url():
     """Make BASE_URL available in all templates."""
-    return {"BASE_URL": URL_PREFIX}
+    return {"BASE_URL": BASE_URL}
 
 
 # ──────────────────────────────────────

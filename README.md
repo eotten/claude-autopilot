@@ -23,46 +23,34 @@ python3 app.py
 
 Open [http://localhost:5055](http://localhost:5055).
 
-### URL Prefix (subpath hosting)
+### Hosting on a subpath
 
-If you're hosting behind a reverse proxy on a subpath (e.g., `example.com/autopilot` instead of `example.com/`), set the `URL_PREFIX` env var:
+If you're serving the app at `example.com/autopilot` instead of `example.com/`, you need two things:
 
-```bash
-URL_PREFIX=/autopilot python3 app.py
-```
+1. **Set `BASE_URL`** so the app generates correct links:
 
-For a systemd service, add it to your service file (`/etc/systemd/system/claude-autopilot.service`):
+   ```ini
+   # In your systemd service file
+   Environment=BASE_URL=/autopilot
+   ```
 
-```ini
-Environment=URL_PREFIX=/autopilot
-```
+   Or when running locally:
 
-Then reload and restart:
+   ```bash
+   BASE_URL=/autopilot python3 app.py
+   ```
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl restart claude-autopilot
-```
+2. **Configure nginx** to strip the subpath and forward to the app. The trailing slashes on both `location` and `proxy_pass` are required:
 
-When `URL_PREFIX` is set, **all routes are mounted under that prefix**. This means:
+   ```nginx
+   location /autopilot/ {
+       proxy_pass http://127.0.0.1:5055/;
+       proxy_set_header Host $host;
+       proxy_set_header X-Real-IP $remote_addr;
+   }
+   ```
 
-- Dashboard: `example.com/autopilot/`
-- API: `example.com/autopilot/api/tasks`
-- Task detail: `example.com/autopilot/task/1`
-
-Your nginx `location` block must match the prefix and proxy to the app with the prefix included:
-
-```nginx
-location /autopilot {
-    proxy_pass http://127.0.0.1:5055;
-    proxy_set_header Host $host;
-    proxy_set_header X-Real-IP $remote_addr;
-}
-```
-
-If `URL_PREFIX` is not set (or empty), all routes are served from `/` as normal.
-
-**Common mistake:** If you set `URL_PREFIX=/autopilot` but make API calls to `/api/tasks` (without the prefix), you'll get a 404. Always include the prefix in your API URLs.
+If `BASE_URL` is not set, all links are relative to `/` (the default for standalone hosting).
 
 ## Schedule Window
 
@@ -90,7 +78,8 @@ Pull the latest code and restart the service. Your settings and tasks are stored
 
 ```bash
 cd /opt/claude-autopilot
-git pull origin main
+git fetch origin main
+git reset --hard origin/main
 sudo systemctl restart claude-autopilot
 ```
 
