@@ -53,7 +53,7 @@
         <nav class="border-b border-gray-100">
             <div class="mx-auto max-w-5xl px-4 sm:px-6 lg:px-8">
                 <div class="flex h-16 items-center justify-between">
-                    <a href="/" class="flex items-center gap-3">
+                    <a href="{{ BASE_URL }}/" class="flex items-center gap-3">
                         <div class="h-8 w-8 rounded-lg bg-accent flex items-center justify-center">
                             <svg class="h-5 w-5 text-white" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                                 <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
@@ -62,7 +62,7 @@
                         <span class="text-lg font-semibold text-gray-900">Claude Autopilot</span>
                     </a>
                     <div class="flex items-center gap-4">
-                        <a href="/archive" class="text-sm text-gray-400 hover:text-accent transition">Archive</a>
+                        <a href="{{ BASE_URL }}/archive" class="text-sm text-gray-400 hover:text-accent transition">Archive</a>
                         <div id="queue-indicator" class="flex items-center gap-2 text-sm text-gray-400">
                             <span class="h-2 w-2 rounded-full bg-gray-200"></span>
                             Idle
@@ -82,7 +82,7 @@
         // Poll queue status
         async function updateQueueStatus() {
             try {
-                const res = await fetch('/api/queue/status');
+                const res = await fetch('{{ BASE_URL }}/api/queue/status');
                 const data = await res.json();
                 const el = document.getElementById('queue-indicator');
                 if (data.running_count > 0) {

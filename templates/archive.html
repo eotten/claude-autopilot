@@ -4,7 +4,7 @@
 
     <div class="flex items-center justify-between">
         <h1 class="text-lg font-semibold text-gray-900">Archive</h1>
-        <a href="/" class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-accent transition">
+        <a href="{{ BASE_URL }}/" class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-accent transition">
             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
@@ -20,7 +20,7 @@
             <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-3">
                     <span class="h-2.5 w-2.5 rounded-full bg-gray-300 flex-shrink-0"></span>
-                    <a href="/task/{{ task.id }}" class="font-medium text-gray-500 hover:text-accent transition truncate">
+                    <a href="{{ BASE_URL }}/task/{{ task.id }}" class="font-medium text-gray-500 hover:text-accent transition truncate">
                         {{ task.title }}
                     </a>
                 </div>
@@ -58,14 +58,16 @@
 </div>
 
 <script>
+    const B = '{{ BASE_URL }}';
+
     async function unarchiveTask(id) {
-        await fetch(`/api/tasks/${id}/complete`, { method: 'POST' });
+        await fetch(`${B}/api/tasks/${id}/complete`, { method: 'POST' });
         document.querySelector(`[data-task-id="${id}"]`).remove();
     }
 
     async function deleteTask(id) {
         if (!confirm('Permanently delete this task and all its data?')) return;
-        await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+        await fetch(`${B}/api/tasks/${id}`, { method: 'DELETE' });
         document.querySelector(`[data-task-id="${id}"]`).remove();
     }
 </script>

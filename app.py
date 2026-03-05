@@ -1,7 +1,7 @@
 import os
 import secrets
 from functools import wraps
-from flask import Flask, request, jsonify, render_template, redirect, url_for, Response
+from flask import Flask, Blueprint, request, jsonify, render_template, redirect, url_for, Response
 from database import get_db, init_db
 from scheduler import start_scheduler, run_task, stop_task, process_queue, _running_processes, is_within_schedule_window
 
@@ -10,31 +10,21 @@ app = Flask(__name__)
 # Always init DB at import time so the reloader child process has tables
 init_db()
 
+# URL prefix — set URL_PREFIX env var when hosting on a subpath (e.g., /autopilot)
+URL_PREFIX = os.environ.get("URL_PREFIX", "").rstrip("/")
+
 # Basic auth — set AUTOPILOT_USER and AUTOPILOT_PASS env vars to enable
 AUTH_USER = os.environ.get("AUTOPILOT_USER")
 AUTH_PASS = os.environ.get("AUTOPILOT_PASS")
+
+bp = Blueprint("autopilot", __name__)
 
 
 def check_auth(username, password):
     return secrets.compare_digest(username, AUTH_USER) and secrets.compare_digest(password, AUTH_PASS)
 
 
-def requires_auth(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        if not AUTH_USER:
-            return f(*args, **kwargs)  # Auth disabled if env vars not set
-        auth = request.authorization
-        if not auth or not check_auth(auth.username, auth.password):
-            return Response(
-                "Login required", 401,
-                {"WWW-Authenticate": 'Basic realm="Claude Autopilot"'},
-            )
-        return f(*args, **kwargs)
-    return decorated
-
-
-@app.before_request
+@bp.before_request
 def _auth_guard():
     if not AUTH_USER:
         return
@@ -46,12 +36,18 @@ def _auth_guard():
         )
 
 
+@bp.context_processor
+def inject_base_url():
+    """Make BASE_URL available in all templates."""
+    return {"BASE_URL": URL_PREFIX}
+
+
 # ──────────────────────────────────────
 # Pages
 # ──────────────────────────────────────
 
 
-@app.route("/")
+@bp.route("/")
 def dashboard():
     conn = get_db()
     active = conn.execute(
@@ -71,7 +67,7 @@ def dashboard():
     return render_template("dashboard.html", active=active, review=review, completed=completed, settings=settings)
 
 
-@app.route("/task/<int:task_id>")
+@bp.route("/task/<int:task_id>")
 def task_detail(task_id):
     conn = get_db()
     task = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
@@ -85,11 +81,11 @@ def task_detail(task_id):
     ).fetchall()
     conn.close()
     if not task:
-        return redirect(url_for("dashboard"))
+        return redirect(url_for("autopilot.dashboard"))
     return render_template("task_detail.html", task=task, messages=messages, logs=logs)
 
 
-@app.route("/archive")
+@bp.route("/archive")
 def archive():
     conn = get_db()
     tasks = conn.execute(
@@ -104,7 +100,7 @@ def archive():
 # ──────────────────────────────────────
 
 
-@app.route("/api/tasks", methods=["GET"])
+@bp.route("/api/tasks", methods=["GET"])
 def list_tasks():
     conn = get_db()
     tasks = conn.execute("SELECT * FROM tasks ORDER BY created_at DESC").fetchall()
@@ -112,7 +108,7 @@ def list_tasks():
     return jsonify([dict(t) for t in tasks])
 
 
-@app.route("/api/tasks", methods=["POST"])
+@bp.route("/api/tasks", methods=["POST"])
 def create_task():
     data = request.json or request.form
     title = data.get("title", "").strip()
@@ -139,10 +135,10 @@ def create_task():
 
     if request.headers.get("Accept") == "application/json" or request.is_json:
         return jsonify({"id": task_id, "status": "queued"}), 201
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("autopilot.dashboard"))
 
 
-@app.route("/api/tasks/<int:task_id>", methods=["DELETE"])
+@bp.route("/api/tasks/<int:task_id>", methods=["DELETE"])
 def delete_task(task_id):
     conn = get_db()
     conn.execute("DELETE FROM task_messages WHERE task_id = ?", (task_id,))
@@ -153,7 +149,7 @@ def delete_task(task_id):
     return jsonify({"ok": True})
 
 
-@app.route("/api/tasks/<int:task_id>/archive", methods=["POST"])
+@bp.route("/api/tasks/<int:task_id>/archive", methods=["POST"])
 def archive_task(task_id):
     conn = get_db()
     conn.execute(
@@ -165,7 +161,7 @@ def archive_task(task_id):
     return jsonify({"ok": True, "status": "archived"})
 
 
-@app.route("/api/tasks/<int:task_id>/run", methods=["POST"])
+@bp.route("/api/tasks/<int:task_id>/run", methods=["POST"])
 def run_task_now(task_id):
     """Manually trigger a task to run immediately."""
     conn = get_db()
@@ -185,7 +181,7 @@ def run_task_now(task_id):
     return jsonify({"ok": True, "status": "running"})
 
 
-@app.route("/api/tasks/<int:task_id>/follow-up", methods=["POST"])
+@bp.route("/api/tasks/<int:task_id>/follow-up", methods=["POST"])
 def follow_up_task(task_id):
     """Send a follow-up message to resume a task's session."""
     data = request.json
@@ -219,7 +215,7 @@ def follow_up_task(task_id):
         return jsonify({"ok": True, "status": "queued"})
 
 
-@app.route("/api/tasks/<int:task_id>/complete", methods=["POST"])
+@bp.route("/api/tasks/<int:task_id>/complete", methods=["POST"])
 def mark_complete(task_id):
     """Mark a task as fully completed."""
     conn = get_db()
@@ -232,7 +228,7 @@ def mark_complete(task_id):
     return jsonify({"ok": True, "status": "completed"})
 
 
-@app.route("/api/tasks/<int:task_id>/reorder", methods=["POST"])
+@bp.route("/api/tasks/<int:task_id>/reorder", methods=["POST"])
 def reorder_task(task_id):
     """Move a task up or down in the queue."""
     data = request.json
@@ -275,14 +271,14 @@ def reorder_task(task_id):
 # ──────────────────────────────────────
 
 
-@app.route("/api/tasks/<int:task_id>/stop", methods=["POST"])
+@bp.route("/api/tasks/<int:task_id>/stop", methods=["POST"])
 def stop_task_now(task_id):
     if stop_task(task_id):
         return jsonify({"ok": True, "status": "cancelled"})
     return jsonify({"error": "Task not running"}), 400
 
 
-@app.route("/api/tasks/<int:task_id>/output", methods=["GET"])
+@bp.route("/api/tasks/<int:task_id>/output", methods=["GET"])
 def get_task_output(task_id):
     conn = get_db()
     task = conn.execute(
@@ -299,7 +295,7 @@ def get_task_output(task_id):
 # ──────────────────────────────────────
 
 
-@app.route("/api/tasks/<int:task_id>/status", methods=["POST"])
+@bp.route("/api/tasks/<int:task_id>/status", methods=["POST"])
 def update_task_status(task_id):
     data = request.json
     if not data:
@@ -348,7 +344,7 @@ def update_task_status(task_id):
 # ──────────────────────────────────────
 
 
-@app.route("/api/settings", methods=["GET"])
+@bp.route("/api/settings", methods=["GET"])
 def get_settings():
     conn = get_db()
     settings = {
@@ -359,7 +355,7 @@ def get_settings():
     return jsonify(settings)
 
 
-@app.route("/api/settings", methods=["POST"])
+@bp.route("/api/settings", methods=["POST"])
 def update_settings():
     data = request.json or request.form
     conn = get_db()
@@ -370,7 +366,7 @@ def update_settings():
 
     if request.headers.get("Accept") == "application/json" or request.is_json:
         return jsonify({"ok": True})
-    return redirect(url_for("dashboard"))
+    return redirect(url_for("autopilot.dashboard"))
 
 
 # ──────────────────────────────────────
@@ -378,13 +374,13 @@ def update_settings():
 # ──────────────────────────────────────
 
 
-@app.route("/api/queue/process", methods=["POST"])
+@bp.route("/api/queue/process", methods=["POST"])
 def trigger_queue():
     process_queue()
     return jsonify({"ok": True})
 
 
-@app.route("/api/queue/status", methods=["GET"])
+@bp.route("/api/queue/status", methods=["GET"])
 def queue_status():
     conn = get_db()
     paused_count = conn.execute("SELECT COUNT(*) FROM tasks WHERE status = 'paused'").fetchone()[0]
@@ -406,6 +402,8 @@ def queue_status():
 # ──────────────────────────────────────
 # Boot
 # ──────────────────────────────────────
+
+app.register_blueprint(bp, url_prefix=URL_PREFIX or "/")
 
 # Start scheduler for both dev (flask run) and prod (gunicorn)
 start_scheduler()

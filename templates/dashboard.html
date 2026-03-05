@@ -56,7 +56,7 @@
                         {% else %}
                         <span class="h-2.5 w-2.5 rounded-full bg-amber-300 flex-shrink-0"></span>
                         {% endif %}
-                        <a href="/task/{{ task.id }}" class="font-medium text-gray-900 hover:text-accent transition truncate">
+                        <a href="{{ BASE_URL }}/task/{{ task.id }}" class="font-medium text-gray-900 hover:text-accent transition truncate">
                             {{ task.title }}
                         </a>
                         {% if task.priority > 0 %}
@@ -132,7 +132,7 @@
                 <div class="flex-1 min-w-0">
                     <div class="flex items-center gap-3">
                         <span class="h-2.5 w-2.5 rounded-full bg-indigo-400 flex-shrink-0"></span>
-                        <a href="/task/{{ task.id }}" class="font-medium text-gray-900 hover:text-accent transition truncate">
+                        <a href="{{ BASE_URL }}/task/{{ task.id }}" class="font-medium text-gray-900 hover:text-accent transition truncate">
                             {{ task.title }}
                         </a>
                     </div>
@@ -144,7 +144,7 @@
                     </div>
                 </div>
                 <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition flex-shrink-0">
-                    <a href="/task/{{ task.id }}" title="Review"
+                    <a href="{{ BASE_URL }}/task/{{ task.id }}" title="Review"
                         class="rounded-lg p-2 text-indigo-400 hover:text-indigo-600 hover:bg-indigo-50 transition">
                         <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                             <path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178z" />
@@ -181,7 +181,7 @@
                         {% elif task.status == 'cancelled' %}
                         <span class="h-2.5 w-2.5 rounded-full bg-orange-300 flex-shrink-0"></span>
                         {% endif %}
-                        <a href="/task/{{ task.id }}" class="font-medium text-gray-500 hover:text-accent transition truncate">
+                        <a href="{{ BASE_URL }}/task/{{ task.id }}" class="font-medium text-gray-500 hover:text-accent transition truncate">
                             {{ task.title }}
                         </a>
                     </div>
@@ -302,6 +302,8 @@
 </div>
 
 <script>
+    const B = '{{ BASE_URL }}';
+
     // Toggle details
     document.getElementById('toggle-details').addEventListener('click', function() {
         const details = document.getElementById('task-details');
@@ -319,7 +321,7 @@
             working_directory: document.getElementById('task-dir').value,
             priority: parseInt(document.getElementById('task-priority').value),
         };
-        await fetch('/api/tasks', {
+        await fetch(`${B}/api/tasks`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify(body)
@@ -348,7 +350,7 @@
         body.schedule_enabled = this.querySelector('[name=schedule_enabled]').checked ? 'true' : 'false';
         body.schedule_window_enabled = this.querySelector('[name=schedule_window_enabled]').checked ? 'true' : 'false';
 
-        await fetch('/api/settings', {
+        await fetch(`${B}/api/settings`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
             body: JSON.stringify(body)
@@ -362,33 +364,33 @@
     });
 
     async function runTask(id) {
-        await fetch(`/api/tasks/${id}/run`, { method: 'POST' });
+        await fetch(`${B}/api/tasks/${id}/run`, { method: 'POST' });
         location.reload();
     }
 
     async function stopTask(id) {
-        await fetch(`/api/tasks/${id}/stop`, { method: 'POST' });
+        await fetch(`${B}/api/tasks/${id}/stop`, { method: 'POST' });
         location.reload();
     }
 
     async function deleteTask(id) {
         if (!confirm('Delete this task?')) return;
-        await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
+        await fetch(`${B}/api/tasks/${id}`, { method: 'DELETE' });
         document.querySelector(`[data-task-id="${id}"]`).remove();
     }
 
     async function archiveTask(id) {
-        await fetch(`/api/tasks/${id}/archive`, { method: 'POST' });
+        await fetch(`${B}/api/tasks/${id}/archive`, { method: 'POST' });
         document.querySelector(`[data-task-id="${id}"]`).remove();
     }
 
     async function markComplete(id) {
-        await fetch(`/api/tasks/${id}/complete`, { method: 'POST' });
+        await fetch(`${B}/api/tasks/${id}/complete`, { method: 'POST' });
         location.reload();
     }
 
     async function moveTask(id, direction) {
-        await fetch(`/api/tasks/${id}/reorder`, {
+        await fetch(`${B}/api/tasks/${id}/reorder`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ direction })
@@ -397,7 +399,7 @@
     }
 
     async function processQueue() {
-        await fetch('/api/queue/process', { method: 'POST' });
+        await fetch(`${B}/api/queue/process`, { method: 'POST' });
         location.reload();
     }
 </script>

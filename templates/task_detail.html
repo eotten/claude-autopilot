@@ -4,7 +4,7 @@
 
     <!-- Back + status bar -->
     <div class="flex items-center justify-between">
-        <a href="/" class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-accent transition">
+        <a href="{{ BASE_URL }}/" class="inline-flex items-center gap-1.5 text-sm text-gray-400 hover:text-accent transition">
             <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
                 <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 19.5L8.25 12l7.5-7.5" />
             </svg>
@@ -173,6 +173,7 @@
 </div>
 
 <script>
+    const B = '{{ BASE_URL }}';
     const TASK_ID = {{ task.id }};
     let currentStatus = '{{ task.status }}';
     let pollInterval = null;
@@ -184,7 +185,7 @@
 
     async function pollOutput() {
         try {
-            const res = await fetch(`/api/tasks/${TASK_ID}/output`);
+            const res = await fetch(`${B}/api/tasks/${TASK_ID}/output`);
             const data = await res.json();
 
             const el = document.getElementById('output-text');
@@ -218,18 +219,18 @@
     if (currentStatus === 'running') startPolling();
 
     async function runTask(id) {
-        await fetch(`/api/tasks/${id}/run`, { method: 'POST' });
+        await fetch(`${B}/api/tasks/${id}/run`, { method: 'POST' });
         location.reload();
     }
 
     async function stopTask(id) {
         document.getElementById('stop-btn').textContent = 'Stopping...';
-        await fetch(`/api/tasks/${id}/stop`, { method: 'POST' });
+        await fetch(`${B}/api/tasks/${id}/stop`, { method: 'POST' });
         setTimeout(() => location.reload(), 1000);
     }
 
     async function markComplete(id) {
-        await fetch(`/api/tasks/${id}/complete`, { method: 'POST' });
+        await fetch(`${B}/api/tasks/${id}/complete`, { method: 'POST' });
         location.reload();
     }
 
@@ -237,7 +238,7 @@
         const input = document.getElementById('followup-input');
         const message = input.value.trim();
         if (!message) return;
-        await fetch(`/api/tasks/${TASK_ID}/follow-up`, {
+        await fetch(`${B}/api/tasks/${TASK_ID}/follow-up`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message, run_now: runNow })

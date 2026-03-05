@@ -23,6 +23,16 @@ python3 app.py
 
 Open [http://localhost:5055](http://localhost:5055).
 
+### Hosting on a subpath
+
+If you're hosting behind a reverse proxy on a subpath (e.g., `/autopilot`), set the `URL_PREFIX` env var:
+
+```bash
+URL_PREFIX=/autopilot python3 app.py
+```
+
+Or in your systemd service: `Environment=URL_PREFIX=/autopilot`
+
 ## Schedule Window
 
 By default, autopilot only processes tasks between **11 PM and 4:30 AM** (configurable in Settings). The 2.5-hour buffer before the 7 AM end time lets ~50% of Claude's 5-hour rolling rate limit window recover before you start working.
